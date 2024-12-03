@@ -7,24 +7,46 @@ sudo sed -i "/#\$nrconf{restart} = 'i';/s/.*/\$nrconf{restart} = 'a';/" /etc/nee
 sudo apt-get update -y
 
 # Install and configure nginx to see outgoing ip
-sudo apt-get install -y nginx
+sudo apt-get install -y python3-pip python3-flask python3-requests
 
-# Deploy nginx proxy config
-sudo mv /etc/nginx/sites-available/default /etc/nginx/default.save
+cat <<EOF > /root/webapp.py
+from flask import Flask, render_template_string
+import requests
 
-echo "server {
-    listen 80;
- 	add_header X-Frame-Options DENY;
- 	add_header X-Content-Type-Options nosniff;
- 	access_log  /var/log/nginx/access.log;
- 	error_log  /var/log/nginx/error.log;
- 	location / {
- 		    proxy_pass http://ipinfo.io/ip;
- 		    proxy_buffering off;
- 		    proxy_http_version 1.1;
- 	}
- }" | sudo tee -a /etc/nginx/sites-available/default
+app = Flask(__name__)
 
-sudo systemctl start nginx 
-sudo systemctl enable nginx
-sudo service nginx restart
+@app.route('/')
+def get_ip_info():
+    response = requests.get('https://ipinfo.io/ip')
+    ip = response.text.strip()
+    return ip
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=80, debug=True)
+EOF
+
+# Create a systemd service file for the Flask application
+cat <<EOF > /etc/systemd/system/flaskapp.service
+[Unit]
+Description=Flask Application
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root
+ExecStart=/usr/bin/python3 /root/webapp.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the Flask service to start on boot
+sudo systemctl enable flaskapp.service
+
+# Start the Flask service
+sudo systemctl start flaskapp.service
+

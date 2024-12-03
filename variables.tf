@@ -15,7 +15,7 @@ variable "lab_cidr" {
 
 variable "subnet_count" {
   description = "Number of subnet in vnet"
-  default     = 3
+  default     = 2
 }
 
 variable "subscription_id" {

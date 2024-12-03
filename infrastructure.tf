@@ -36,7 +36,7 @@ data "template_file" "test_vm_config" {
 
 module "vm" {
   source = "github.com/alexandreweiss/misc-tf-modules/azr-linux-vm"
-  count  = 3
+  count  = var.subnet_count
 
   environment         = "test"
   location            = var.location

@@ -6,42 +6,49 @@ sudo sed -i "/#\$nrconf{restart} = 'i';/s/.*/\$nrconf{restart} = 'a';/" /etc/nee
 # Install all the needed packages
 sudo apt-get update -y
 
-# Install and configure nginx to see outgoing ip
-sudo apt-get install -y nginx
+sudo apt-get install -y python3-pip python3-flask python3-requests
 
-# Deploy nginx proxy config
-sudo mv /etc/nginx/sites-available/default /etc/nginx/default.save
+cat <<EOF > /root/webapp.py
+from flask import Flask, render_template_string
+import requests
 
-sudo cat <<EOF > /var/www/html/index.html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IP Display</title>
-    %{ for addr in [ips] ~}
-    <script>
-        async function fetchIP() {
-            try {
-                const response = await fetch('http://"{addr}');
-                const ip = await response.text();
-                document.getElementById('${addr}').innerText = 'VM at ${addr} breakouts using write(ip)';
-            } catch (error) {
-                console.error('Error fetching IP:', error);
-            }
-        }
-        window.onload = fetchIP;
-    </script>
-    %{ endfor ~}
-</head>
-<body>
-    %{ for addr in [ips] ~}
-    <h1 id="${addr}">Loading...</h1>
-    %{ endfor ~}
-</body>
-</html>
+app = Flask(__name__)
+
+@app.route('/')
+def get_ip_info():
+    ip_addresses = [${join(", ", [for ip in split(",", "${ip_addresses}"): "\"${ip}\""])}]
+    ip_info = []
+    for ip in ip_addresses:
+        response = requests.get(f'http://{ip}')
+        ip_info.append(f'VM at {ip} egress with {response.text.strip()}')
+    return render_template_string('<h1>Egress IPs:</h1><br><ul>{% for info in ip_info %}<li>{{ info }}</li>{% endfor %}</ul>', ip_info=ip_info)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=80, debug=True)
 EOF
 
-sudo systemctl start nginx 
-sudo systemctl enable nginx
-sudo service nginx restart
+# Create a systemd service file for the Flask application
+cat <<EOF > /etc/systemd/system/flaskapp.service
+[Unit]
+Description=Flask Application
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root
+ExecStart=/usr/bin/python3 /root/webapp.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the Flask service to start on boot
+sudo systemctl enable flaskapp.service
+
+# Start the Flask service
+sudo systemctl start flaskapp.service
+

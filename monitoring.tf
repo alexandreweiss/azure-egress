@@ -10,7 +10,7 @@ data "template_file" "monitoring_vm_config" {
   template = file("${path.module}/monitoring-vm-config.tftpl")
 
   vars = {
-    ips = join(", ", "${module.vm[*].vm_private_ip}")
+    ip_addresses = join(",", "${module.vm[*].vm_private_ip}")
   }
 }
 
