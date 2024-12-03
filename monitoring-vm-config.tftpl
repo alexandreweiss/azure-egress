@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# Auto restart services during apt rather than prompt for restart (new in Ubuntu 22)
+sudo sed -i "/#\$nrconf{restart} = 'i';/s/.*/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+
+# Install all the needed packages
+sudo apt-get update -y
+
+# Install and configure nginx to see outgoing ip
+sudo apt-get install -y nginx
+
+# Deploy nginx proxy config
+sudo mv /etc/nginx/sites-available/default /etc/nginx/default.save
+
+sudo cat <<EOF > /var/www/html/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Display</title>
+    %{ for addr in [ips] ~}
+    <script>
+        async function fetchIP() {
+            try {
+                const response = await fetch('http://"{addr}');
+                const ip = await response.text();
+                document.getElementById('${addr}').innerText = 'VM at ${addr} breakouts using write(ip)';
+            } catch (error) {
+                console.error('Error fetching IP:', error);
+            }
+        }
+        window.onload = fetchIP;
+    </script>
+    %{ endfor ~}
+</head>
+<body>
+    %{ for addr in [ips] ~}
+    <h1 id="${addr}">Loading...</h1>
+    %{ endfor ~}
+</body>
+</html>
+EOF
+
+sudo systemctl start nginx 
+sudo systemctl enable nginx
+sudo service nginx restart

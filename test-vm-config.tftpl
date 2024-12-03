@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# Auto restart services during apt rather than prompt for restart (new in Ubuntu 22)
+sudo sed -i "/#\$nrconf{restart} = 'i';/s/.*/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+
+# Install all the needed packages
+sudo apt-get update -y
+
+# Install and configure nginx to see outgoing ip
+sudo apt-get install -y nginx
+
+# Deploy nginx proxy config
+sudo mv /etc/nginx/sites-available/default /etc/nginx/default.save
+
+echo "server {
+    listen 80;
+ 	add_header X-Frame-Options DENY;
+ 	add_header X-Content-Type-Options nosniff;
+ 	access_log  /var/log/nginx/access.log;
+ 	error_log  /var/log/nginx/error.log;
+ 	location / {
+ 		    proxy_pass http://ipinfo.io/ip;
+ 		    proxy_buffering off;
+ 		    proxy_http_version 1.1;
+ 	}
+ }" | sudo tee -a /etc/nginx/sites-available/default
+
+sudo systemctl start nginx 
+sudo systemctl enable nginx
+sudo service nginx restart
