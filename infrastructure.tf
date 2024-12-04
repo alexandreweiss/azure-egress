@@ -92,6 +92,7 @@ resource "azurerm_route_table" "subnet-1-rt" {
 resource "azurerm_subnet_route_table_association" "subnet-1-rt-assoc" {
   route_table_id = azurerm_route_table.subnet-1-rt.id
   subnet_id      = azurerm_subnet.subnet[1].id
+  depends_on     = [module.vm]
 }
 
 
