@@ -1,29 +1,28 @@
 
-resource "azurerm_subnet" "subnet-monitoring" {
-  name                 = "subnet-200"
-  address_prefixes     = [cidrsubnet(var.lab_cidr, 8, 200)]
+resource "azurerm_subnet" "subnet-ilpip" {
+  name                 = "subnet-198"
+  address_prefixes     = [cidrsubnet(var.lab_cidr, 8, 198)]
   virtual_network_name = azurerm_virtual_network.vnet.name
   resource_group_name  = azurerm_resource_group.rg.name
 }
 
-data "template_file" "monitoring_vm_config" {
-  template = file("${path.module}/monitoring-vm-config.tftpl")
+data "template_file" "ilpip_vm_config" {
+  template = file("${path.module}/vm-ilpip-config.tftpl")
 
   vars = {
-    ip_addresses = join(",", "${module.vm[*].vm_private_ip}")
   }
 }
 
-module "monitoring_vm" {
+module "ilpip_vm" {
   source = "github.com/alexandreweiss/misc-tf-modules/azr-linux-vm"
 
-  environment         = "monitoring"
+  environment         = "ilpip"
   location            = var.location
   location_short      = var.location_short
   index_number        = "0"
   resource_group_name = azurerm_resource_group.rg.name
-  subnet_id           = azurerm_subnet.subnet-monitoring.id
-  custom_data         = base64encode(data.template_file.monitoring_vm_config.rendered)
+  subnet_id           = azurerm_subnet.subnet-ilpip.id
+  custom_data         = base64encode(data.template_file.ilpip_vm_config.rendered)
   admin_ssh_key       = var.admin_ssh_key
   customer_name       = "lab"
   enable_public_ip    = true
@@ -31,7 +30,7 @@ module "monitoring_vm" {
   ]
 }
 
-resource "azurerm_network_security_rule" "monitoring_http" {
+resource "azurerm_network_security_rule" "ilpip_http" {
   name                        = "Allow-HTTP"
   priority                    = 100
   direction                   = "Inbound"
@@ -42,10 +41,10 @@ resource "azurerm_network_security_rule" "monitoring_http" {
   source_address_prefix       = "*"
   destination_address_prefix  = "*"
   resource_group_name         = azurerm_resource_group.rg.name
-  network_security_group_name = module.monitoring_vm.nsg_name
+  network_security_group_name = module.ilpip_vm.nsg_name
 }
 
-resource "azurerm_network_security_rule" "monitoring_ssh" {
+resource "azurerm_network_security_rule" "ilpip_ssh" {
   name                        = "Allow-SSH"
   priority                    = 110
   direction                   = "Inbound"
@@ -56,5 +55,30 @@ resource "azurerm_network_security_rule" "monitoring_ssh" {
   source_address_prefix       = "81.49.43.155/32"
   destination_address_prefix  = "*"
   resource_group_name         = azurerm_resource_group.rg.name
-  network_security_group_name = module.monitoring_vm.nsg_name
+  network_security_group_name = module.ilpip_vm.nsg_name
+}
+
+# Blackhole subnet-198
+resource "azurerm_route_table" "subnet-198-rt" {
+  location            = var.location
+  name                = "${var.location_short}-subnet-198-rt"
+  resource_group_name = azurerm_resource_group.rg.name
+
+  route {
+    address_prefix = "0.0.0.0/0"
+    name           = "internetDefaultBlackhole"
+    next_hop_type  = "None"
+  }
+
+  lifecycle {
+    ignore_changes = [
+      route,
+    ]
+  }
+}
+
+resource "azurerm_subnet_route_table_association" "subnet-198-rt-assoc" {
+  route_table_id = azurerm_route_table.subnet-198-rt.id
+  subnet_id      = azurerm_subnet.subnet-ilpip.id
+  depends_on     = [module.ilpip_vm]
 }

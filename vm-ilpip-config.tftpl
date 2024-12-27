@@ -1,0 +1,51 @@
+#!/bin/sh
+
+# Auto restart services during apt rather than prompt for restart (new in Ubuntu 22)
+sudo sed -i "/#\$nrconf{restart} = 'i';/s/.*/\$nrconf{restart} = 'a';/" /etc/needrestart/needrestart.conf
+
+# Install all the needed packages
+sudo apt-get update -y
+
+# Install and configure nginx to see outgoing ip
+sudo apt-get install -y python3-pip python3-flask python3-requests
+
+cat <<EOF > /root/webapp.py
+from flask import Flask, render_template_string
+import requests
+
+app = Flask(__name__)
+
+@app.route('/')
+def get_ip_info():
+    response = requests.get('https://ipinfo.io/ip')
+    ip = response.text.strip()
+    return ip
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=80, debug=True)
+EOF
+
+# Create a systemd service file for the Flask application
+cat <<EOF > /etc/systemd/system/flaskapp.service
+[Unit]
+Description=Flask Application
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root
+ExecStart=/usr/bin/python3 /root/webapp.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Reload systemd to recognize the new service
+sudo systemctl daemon-reload
+
+# Enable the Flask service to start on boot
+sudo systemctl enable flaskapp.service
+
+# Start the Flask service
+sudo systemctl start flaskapp.service
